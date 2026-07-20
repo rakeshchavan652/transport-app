@@ -24,11 +24,16 @@ if not st.session_state.logged_in:
 else:
     # डॅशबोर्ड मेनू
     st.sidebar.title("🛠️ ट्रान्सपोर्ट मेनू")
-    menu = st.sidebar.selectbox("काय करायचे आहे?", ["नवीन LR एंट्री (Data Entry)", "LR प्रिंट करा (Print Bill)", "सर्व रेकॉर्ड्स पाहणे (View Data)"])
+    menu = st.sidebar.selectbox("काय करायचे आहे?", [
+        "नवीन LR एंट्री (Data Entry)", 
+        "LR एडिट करा (Edit LR)",
+        "LR प्रिंट करा (Print Bill)", 
+        "सर्व रेकॉर्ड्स पाहणे (View Data)"
+    ])
     
     EXCEL_FILE = "transport_data.xlsx"
     
-    # १. नवीन LR एंट्री फॉर्म (सर्व ऑप्शन्ससह)
+    # १. नवीन LR एंट्री फॉर्म
     if menu == "नवीन LR एंट्री (Data Entry)":
         st.header("📝 नवीन लॅपटॉप / LR डेटा एंट्री फॉर्म")
         
@@ -100,14 +105,117 @@ else:
                     df_new = pd.DataFrame(new_data)
                     if os.path.exists(EXCEL_FILE):
                         df_old = pd.read_excel(EXCEL_FILE)
+                        # डबल एंट्री टाळण्यासाठी जुना नंबर असेल तर आधी तो डिलीट करू
+                        if lr_no in df_old["LR No"].values:
+                            df_old = df_old[df_old["LR No"] != lr_no]
                         df_final = pd.concat([df_old, df_new], ignore_index=True)
                     else:
                         df_final = df_new
                     df_final.to_excel(EXCEL_FILE, index=False)
                     st.success(f"LR No. {lr_no} यशस्वीरित्या सेव्ह झाला आहे!")
 
-    # २. हुबेहूब पावती प्रिंट करण्याचा विभाग
-    elif menu == "LR PRINT करा (Print Bill)":
+    # २. LR एडिट करण्याचा नवीन विभाग
+    elif menu == "LR एडिट करा (Edit LR)":
+        st.header("✏️ जुनी LR एंट्री एडिट / दुरुस्त करा")
+        if os.path.exists(EXCEL_FILE):
+            df = pd.read_excel(EXCEL_FILE)
+            edit_lr = st.selectbox("दुरुस्त करण्यासाठी LR नंबर निवडा", df["LR No"].unique())
+            
+            if edit_lr:
+                # निवडलेल्या LR चा जुना डेटा शोधणे
+                idx = df[df["LR No"] == edit_lr].index[0]
+                row = df.loc[idx]
+                
+                with st.form("edit_form"):
+                    st.markdown(f"### 📍 LR नंबर: {edit_lr} चा डेटा एडिट करत आहात")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        e_date_str = str(row['Date'])
+                        try:
+                            e_date = datetime.strptime(e_date_str, "%Y-%m-%d")
+                        except:
+                            e_date = datetime.now()
+                        new_date = st.date_input("तारीख बदलणे", e_date)
+                    with c2:
+                        new_vehicle = st.text_input("गाडी नंबर बदलणे", str(row['Vehicle No']))
+                    with c3:
+                        new_driver = st.text_input("ड्रायव्हर फोन बदलणे", str(row['Driver Phone']) if pd.notna(row['Driver Phone']) else "")
+
+                    c4, c5 = st.columns(2)
+                    with c4:
+                        new_from = st.text_input("कोठून (From)", str(row['From']))
+                    with c5:
+                        new_to = st.text_input("कोठे (To)", str(row['To']))
+
+                    st.markdown("---")
+                    c6, c7 = st.columns(2)
+                    with c6:
+                        new_consignor = st.text_input("CONSIGNOR M/S", str(row['Consignor']))
+                        new_consignor_gst = st.text_input("Consignor GSTIN", str(row['Consignor GSTIN']) if pd.notna(row['Consignor GSTIN']) else "")
+                    with c7:
+                        new_consignee = st.text_input("CONSIGNEE M/S", str(row['Consignee']))
+                        new_consignee_gst = st.text_input("Consignee GSTIN", str(row['Consignee GSTIN']) if pd.notna(row['Consignee GSTIN']) else "")
+
+                    st.markdown("---")
+                    c8, c9, c10, c11 = st.columns(4)
+                    with c8:
+                        new_pkgs = st.number_input("नग (PKGS)", min_value=0, value=int(row['Pkgs']) if pd.notna(row['Pkgs']) else 0)
+                    with c9:
+                        new_desc = st.text_input("माल तपशील", str(row['Description']))
+                    with c10:
+                        new_act_wt = st.number_input("Actual Wt.", min_value=0.0, value=float(row['Actual Wt']) if pd.notna(row['Actual Wt']) else 0.0)
+                        new_chg_wt = st.number_input("Charged Wt.", min_value=0.0, value=float(row['Charged Wt']) if pd.notna(row['Charged Wt']) else 0.0)
+                    with c11:
+                        new_basis = st.text_input("Rate Basis", str(row['Rate Basis']) if pd.notna(row['Rate Basis']) else "")
+
+                    st.markdown("---")
+                    c12, c13 = st.columns(2)
+                    with c12:
+                        # जुनी व्हॅल्यू सिलेक्ट ठेवणे
+                        t_list = ["PAID", "TO PAY", "TO BE BILLED (TBB)"]
+                        try:
+                            t_idx = t_list.index(str(row['Payment Term']))
+                        except:
+                            t_idx = 0
+                        new_term = st.radio("पेमेंट अट बदला", t_list, index=t_idx)
+                    with c13:
+                        new_basic = st.number_input("BASIC FREIGHT (₹)", min_value=0, value=int(row['Basic Freight']) if pd.notna(row['Basic Freight']) else 0)
+                        new_hamali = st.number_input("HAMALI / LOADING (₹)", min_value=0, value=int(row['Hamali']) if pd.notna(row['Hamali']) else 0)
+                        new_stat = st.number_input("STATISTICAL / OTHER (₹)", min_value=0, value=int(row['Statistical']) if pd.notna(row['Statistical']) else 0)
+                        new_total = new_basic + new_hamali + new_stat
+                        st.write(f"**नवीन एकूण रक्कम: ₹ {new_total}**")
+
+                    update_submit = st.form_submit_button("🔄 डेटा अपडेट करा (Update LR)")
+                    
+                    if update_submit:
+                        df.loc[idx, "Date"] = new_date.strftime("%Y-%m-%d")
+                        df.loc[idx, "Vehicle No"] = new_vehicle
+                        df.loc[idx, "Driver Phone"] = new_driver
+                        df.loc[idx, "From"] = new_from
+                        df.loc[idx, "To"] = new_to
+                        df.loc[idx, "Consignor"] = new_consignor
+                        df.loc[idx, "Consignor GSTIN"] = new_consignor_gst
+                        df.loc[idx, "Consignee"] = new_consignee
+                        df.loc[idx, "Consignee GSTIN"] = new_consignee_gst
+                        df.loc[idx, "Pkgs"] = new_pkgs
+                        df.loc[idx, "Description"] = new_desc
+                        df.loc[idx, "Actual Wt"] = new_act_wt
+                        df.loc[idx, "Charged Wt"] = new_chg_wt
+                        df.loc[idx, "Rate Basis"] = new_basis
+                        df.loc[idx, "Payment Term"] = new_term
+                        df.loc[idx, "Basic Freight"] = new_basic
+                        df.loc[idx, "Hamali"] = new_hamali
+                        df.loc[idx, "Statistical"] = new_stat
+                        df.loc[idx, "Total Amount"] = new_total
+                        
+                        df.to_excel(EXCEL_FILE, index=False)
+                        st.success(f"LR No. {edit_lr} चा डेटा यशस्वीरित्या अपडेट झाला आहे!")
+                        st.rerun()
+        else:
+            st.warning("अद्याप कोणताही डेटा नाही, आधी नवीन एंट्री करा.")
+
+    # ३. पावती प्रिंट करण्याचा विभाग
+    elif menu == "LR प्रिंट करा (Print Bill)":
         st.header("🖨️ लॅपटॉप पावती प्रिंटर")
         if os.path.exists(EXCEL_FILE):
             df = pd.read_excel(EXCEL_FILE)
@@ -116,7 +224,6 @@ else:
             if search_lr:
                 row = df[df["LR No"] == search_lr].iloc[0]
                 
-                # हुबेहूब बिल पुस्तकासारखे डिझाईन (HTML/CSS)
                 bill_html = f"""
                 <div style="border: 3px double #f39c12; padding: 20px; font-family: Arial, sans-serif; background-color: #fff; color: #000; max-width: 800px; margin: auto;">
                     <div style="text-align: center; border-bottom: 2px solid #f39c12; padding-bottom: 10px;">
@@ -143,7 +250,7 @@ else:
                         <tr>
                             <td style="padding: 5px;"><b>FROM:</b> {row['From']}</td>
                             <td style="padding: 5px;"><b>TO:</b> {row['To']}</td>
-                            <td style="padding: 5px;"><b>DRIVER PHONE:</b> {row['Driver Phone']}</td>
+                            <td style="padding: 5px;"><b>DRIVER PHONE:</b> {row['Driver Phone'] if pd.notna(row['Driver Phone']) else ''}</td>
                         </tr>
                     </table>
                     
@@ -153,8 +260,8 @@ else:
                             <td style="width: 50%; padding: 3px;">CONSIGNEE (RECEIVER DETAILS)</td>
                         </tr>
                         <tr>
-                            <td style="padding: 8px; height: 60px; vertical-align: top;"><b>M/S:</b> {row['Consignor']}<br><br><b>GSTIN:</b> {row['Consignor GSTIN']}</td>
-                            <td style="padding: 8px; height: 60px; vertical-align: top;"><b>M/S:</b> {row['Consignee']}<br><br><b>GSTIN:</b> {row['Consignee GSTIN']}</td>
+                            <td style="padding: 8px; height: 60px; vertical-align: top;"><b>M/S:</b> {row['Consignor']}<br><br><b>GSTIN:</b> {row['Consignor GSTIN'] if pd.notna(row['Consignor GSTIN']) else ''}</td>
+                            <td style="padding: 8px; height: 60px; vertical-align: top;"><b>M/S:</b> {row['Consignee']}<br><br><b>GSTIN:</b> {row['Consignee GSTIN'] if pd.notna(row['Consignee GSTIN']) else ''}</td>
                         </tr>
                     </table>
                     
@@ -171,7 +278,7 @@ else:
                             <td style="padding: 5px; text-align: left;"><br>{row['Description']}</td>
                             <td style="padding: 5px;"><br>{row['Actual Wt']} Tons</td>
                             <td style="padding: 5px;"><br>{row['Charged Wt']} Tons</td>
-                            <td style="padding: 5px;"><br>{row['Rate Basis']}</td>
+                            <td style="padding: 5px;"><br>{row['Rate Basis'] if pd.notna(row['Rate Basis']) else ''}</td>
                         </tr>
                         <tr style="background-color: #fff8ee; font-weight: bold;">
                             <td style="padding: 5px;">TOTAL</td>
@@ -219,7 +326,7 @@ else:
         else:
             st.warning("अद्याप कोणताही डेटा नोंदवलेला नाही.")
 
-    # ३. सर्व डेटा पाहणे
+    # ४. सर्व डेटा पाहणे
     elif menu == "सर्व रेकॉर्ड्स पाहणे (View Data)":
         st.header("📋 नोंदवलेला सर्व डेटा")
         if os.path.exists(EXCEL_FILE):
